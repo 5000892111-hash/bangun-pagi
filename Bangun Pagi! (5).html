@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bangun Pagi!</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--sky1:#1b2253;--sky2:#ff9a5a;--ink:#fff7e8;--accent:#ffd34d;--bad:#ff5d6c;--good:#6fe3a1;--panel:rgba(20,24,60,.55);
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--panel:rgba(10,12,35,.65)}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{height:100%;margin:0}
+body{font-family:"Fredoka",ui-rounded,system-ui,sans-serif;color:var(--ink);background:#1b2253;overflow:hidden}
+#sky{position:fixed;inset:0;background:linear-gradient(to top,var(--sky2),var(--sky1));transition:background .2s}
+#sun{position:absolute;left:50%;width:120px;height:120px;margin-left:-60px;border-radius:50%;background:radial-gradient(circle,#fff6b0,var(--accent));box-shadow:0 0 80px 30px rgba(255,211,77,.5);bottom:-90px;transition:bottom .3s}
+#app{position:relative;height:100%;max-width:480px;margin:0 auto;display:flex;flex-direction:column;padding:14px;gap:10px}
+#top{display:flex;justify-content:space-between;align-items:center}
+#clock{font-size:44px;font-weight:600;line-height:1}
+#goal{font-size:14px;opacity:.85;text-align:right}
+.bar{height:16px;border-radius:9px;background:var(--panel);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--good);transition:width .1s}
+#kantuk i{background:var(--bad)}
+.lbl{font-size:13px;display:flex;justify-content:space-between;margin-bottom:3px}
+#steps{display:flex;gap:6px;justify-content:center;font-size:22px}
+#steps span{opacity:.3;filter:grayscale(1)}
+#steps span.done{opacity:1;filter:none}
+#steps span.now{opacity:1;filter:none;transform:scale(1.3)}
+#field{position:relative;flex:1;min-height:120px}
+.card{position:absolute;padding:10px 14px;border-radius:16px;font-size:18px;font-weight:600;border:0;color:#1b2253;animation:pop .15s}
+.card.good{background:var(--good)}
+.card.bad{background:var(--bad);color:#fff}
+@keyframes pop{from{transform:scale(.4)}to{transform:scale(1)}}
+#hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;font-size:14px;opacity:.8;pointer-events:none;padding:0 20px}
+#main{border:0;border-radius:28px;padding:22px 10px;background:var(--accent);color:#3a2300;font:600 26px "Fredoka",ui-rounded,system-ui,sans-serif;box-shadow:0 6px 0 #c98f12;touch-action:manipulation}
+#main:active{transform:translateY(4px);box-shadow:0 2px 0 #c98f12}
+#main:focus-visible,.card:focus-visible,#again:focus-visible{outline:3px solid #fff;outline-offset:3px}
+#over{position:absolute;inset:0;background:rgba(10,12,35,.82);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:10px;z-index:5}
+#over h1{margin:0;font-size:34px}
+#over p{margin:0;max-width:300px;line-height:1.4}
+#again{border:0;border-radius:22px;padding:14px 30px;font:600 20px "Fredoka",ui-rounded,system-ui,sans-serif;background:var(--accent);color:#3a2300;margin-top:8px}
+@media (prefers-reduced-motion:reduce){.card{animation:none}#sun{transition:none}}
+</style>
+</head>
+<body>
+<div id="sky"><div id="sun"></div></div>
+<div id="app">
+  <div id="top"><div id="clock">06:00</div><div id="goal">Berangkat sebelum<br>jam 07:00</div></div>
+  <div id="steps"></div>
+  <div><div class="lbl"><span id="stepName">Matikan alarm</span><span id="pct">0%</span></div><div class="bar"><i id="prog"></i></div></div>
+  <div id="kantuk"><div class="lbl"><span>Kantuk</span><span id="kv">0%</span></div><div class="bar"><i id="kbar"></i></div></div>
+  <div id="field"><div id="hint">Ketuk ☕ untuk mengusir kantuk.<br>Hindari 🛌 📱 😴</div></div>
+  <button id="main">Matikan alarm</button>
+</div>
+<div id="over">
+  <h1>Bangun Pagi!</h1>
+  <p>Selesaikan 6 langkah rutinitas pagi sebelum jam 07:00. Ketuk tombol kuning sebanyak mungkin. Kalau kantuk penuh, kamu tidur lagi.</p>
+  <button id="again">Mulai</button>
+</div>
+<script>
+(function(){
+var STEPS=[["⏰","Matikan alarm"],["👀","Buka mata"],["🛏️","Bangun dari kasur"],["🪥","Gosok gigi"],["🚿","Mandi"],["🍳","Sarapan"]];
+var CARDS=[
+ {t:"☕ Kopi",g:1,k:-28,m:0},{t:"🥛 Susu",g:1,k:-18,m:0},{t:"🌞 Jendela",g:1,k:-22,m:0},
+ {t:"🛌 Bantal",g:0,k:18,m:0},{t:"📱 Scroll",g:0,k:12,m:-3},{t:"😴 Snooze",g:0,k:15,m:-5}];
+var el=function(i){return document.getElementById(i)};
+var s,timer,spawn,last,best=null;
+var stepsEl=el("steps");
+
+function render(){
+  var h=6+Math.floor(s.min/60),m=Math.floor(s.min%60);
+  el("clock").textContent=(h<10?"0":"")+h+":"+(m<10?"0":"")+m;
+  el("prog").style.width=s.prog+"%";
+  el("pct").textContent=Math.round(s.prog)+"%";
+  el("kbar").style.width=Math.min(100,s.k)+"%";
+  el("kv").textContent=Math.round(Math.min(100,s.k))+"%";
+  var cur=STEPS[Math.min(s.step,5)];
+  el("stepName").textContent=cur[1];
+  el("main").textContent=cur[0]+" "+cur[1];
+  var total=(s.step+s.prog/100)/6;
+  el("sun").style.bottom=(-90+total*(window.innerHeight*0.55))+"px";
+  var kids=stepsEl.children;
+  for(var i=0;i<6;i++)kids[i].className=i<s.step?"done":i==s.step?"now":"";
+}
+
+function start(){
+  s={min:0,k:0,step:0,prog:0,run:true};
+  el("over").style.display="none";
+  var f=el("field");[].slice.call(f.querySelectorAll(".card")).forEach(function(c){c.remove()});
+  stepsEl.innerHTML="";STEPS.forEach(function(x){var sp=document.createElement("span");sp.textContent=x[0];stepsEl.appendChild(sp)});
+  last=performance.now();
+  clearInterval(timer);clearInterval(spawn);
+  timer=setInterval(tick,100);
+  spawn=setInterval(spawnCard,1500);
+  render();
+}
+
+function tick(){
+  if(!s.run)return;
+  var now=performance.now(),dt=Math.min(.3,(now-last)/1000);last=now;
+  s.min+=dt;
+  s.k+=(4+s.step*.8)*dt;
+  if(s.k>=100){end(false,"Kantuk menang. Kamu tidur lagi sampai jam "+el("clock").textContent+".");return}
+  if(s.min>=60){end(false,"Sudah jam 07:00 dan kamu belum berangkat. Kamu terlambat.");return}
+  render();
+}
+
+el("main").addEventListener("pointerdown",function(e){
+  e.preventDefault();
+  if(!s||!s.run)return;
+  s.prog+= s.k>60?7:13;
+  s.k=Math.max(0,s.k-1.5);
+  if(s.prog>=100){
+    s.prog=0;s.step++;
+    if(s.step>=6){render();
+      var left=Math.max(0,Math.round(60-s.min));
+      var stars=left>=25?3:left>=10?2:1;
+      var msg="Kamu berangkat jam "+el("clock").textContent+", "+left+" menit lebih awal. "+"⭐".repeat(stars);
+      if(best===null||left>best){best=left;msg+=" Rekor baru!"}
+      end(true,msg);return}
+  }
+  render();
+});
+
+function spawnCard(){
+  if(!s||!s.run)return;
+  var h=el("hint");if(h)h.remove();
+  var d=CARDS[Math.floor(Math.random()*CARDS.length)];
+  if(Math.random()<.4)d=CARDS[Math.floor(Math.random()*3)];
+  var f=el("field"),b=document.createElement("button");
+  b.className="card "+(d.g?"good":"bad");b.textContent=d.t;
+  f.appendChild(b);
+  b.style.left=Math.random()*Math.max(10,f.clientWidth-b.offsetWidth)+"px";
+  b.style.top=Math.random()*Math.max(10,f.clientHeight-b.offsetHeight)+"px";
+  var gone=setTimeout(function(){b.remove()},2200);
+  b.addEventListener("pointerdown",function(e){
+    e.preventDefault();clearTimeout(gone);b.remove();
+    if(!s.run)return;
+    s.k=Math.max(0,s.k+d.k);s.min=Math.max(0,s.min-d.m);render();
+  });
+}
+
+function end(win,msg){
+  s.run=false;clearInterval(timer);clearInterval(spawn);
+  var o=el("over");o.style.display="flex";
+  o.querySelector("h1").textContent=win?"Selamat pagi! ☀️":"Kesiangan 😴";
+  o.querySelector("p").textContent=msg;
+  el("again").textContent=win?"Main lagi":"Coba lagi";
+  el("again").focus();
+}
+el("again").addEventListener("click",start);
+s={min:0,k:0,step:0,prog:0,run:false};
+stepsEl.innerHTML="";STEPS.forEach(function(x){var sp=document.createElement("span");sp.textContent=x[0];stepsEl.appendChild(sp)});
+render();
+})();
+</script>
+</body>
+</html>
